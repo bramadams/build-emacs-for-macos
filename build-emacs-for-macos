@@ -3,6 +3,7 @@
 
 require 'English'
 require 'date'
+require 'erb'
 require 'etc'
 require 'fileutils'
 require 'json'
@@ -93,6 +94,8 @@ class Build
     app = compile_source(source)
 
     LibEmbedder.new(app, brew_dir, extra_libs).embed
+    LibGccJitEmbedder.new(app, gcc_dir).embed if options[:native_comp]
+    LauncherEmbedder.new(app, LAUNCHER_TEMPLATE).embed
 
     archive_app(app)
   end
@@ -525,10 +528,13 @@ class LibEmbedder < AbstractEmbedder
   def embed
     info 'Embedding libraries into Emacs.app'
 
+    binary = "#{bin}-bin" if File.exist?("#{bin}-bin")
+    binary ||= bin
+
     FileUtils.cd(File.dirname(app)) do
-      copy_libs(bin)
-      copy_extra_libs(extra_libs, bin) if extra_libs.any?
-      self_ref_libs(bin)
+      copy_libs(binary)
+      copy_extra_libs(extra_libs, binary) if extra_libs.any?
+      self_ref_libs(binary)
     end
   end
 
@@ -612,6 +618,113 @@ class LibEmbedder < AbstractEmbedder
     File.chmod(0o775, file)
     yield
     File.chmod(mode, file)
+  end
+end
+
+class LibGccJitEmbedder < AbstractEmbedder
+  attr_reader :gcc_dir
+
+  def initialize(app, gcc_dir)
+    super(app)
+    @gcc_dir = gcc_dir
+  end
+
+  def embed
+    if embedded?
+      info 'libgccjit already embedded in Emacs.app'
+      return
+    end
+
+    info 'Embedding libgccjit into Emacs.app'
+    if gcc_version.empty?
+      err "No suitable GCC lib with libgccjit found in #{gcc_dir}"
+    end
+
+    FileUtils.mkdir_p(File.dirname(target_dir))
+    FileUtils.cp_r(source_dir, target_dir)
+  end
+
+  private
+
+  def embedded?
+    Dir[File.join(target_dir, 'libgccjit.so*')].any?
+  end
+
+  def target_dir
+    File.join(lib_dir, 'gcc', gcc_version)
+  end
+
+  def gcc_version
+    @gcc_version ||= Dir[File.join(gcc_dir, 'lib', 'gcc', '*', 'libgccjit.so*')]
+                     .map { |path| File.dirname(path) }
+                     .select { |path| path.match?(%r{/\d+$}) }
+                     .uniq
+                     .map { |dir| File.basename(dir).to_i }
+                     .max
+                     .to_s
+  end
+
+  def source_dir
+    @source_dir ||= File.join(gcc_dir, 'lib', 'gcc', gcc_version)
+  end
+end
+
+class LauncherEmbedder < AbstractEmbedder
+  attr_reader :template
+
+  def initialize(app, template)
+    super(app)
+
+    @template = template
+  end
+
+  def embed
+    if embedded?
+      info 'Launcher script already embedded in Emacs.app'
+      return
+    end
+
+    info 'Embedding launcher script into Emacs.app'
+
+    unless File.exist?("#{bin}#{bin_suffix}")
+      FileUtils.mv(bin, "#{bin}#{bin_suffix}")
+    end
+
+    unless File.exist?("#{bin}#{bin_suffix}#{dump_ext}")
+      FileUtils.mv("#{bin}#{dump_ext}", "#{bin}#{bin_suffix}#{dump_ext}")
+    end
+
+    unless File.exist?(bin)
+      File.write(bin, launcher)
+      File.chmod(0o775, bin)
+    end
+  end
+
+  private
+
+  def bin_suffix
+    '-bin'
+  end
+
+  def dump_ext
+    '.pdmp'
+  end
+
+  def embedded?
+    File.exist?(bin) &&
+      File.exist?("#{bin}#{bin_suffix}") &&
+      File.exist?("#{bin}#{bin_suffix}#{dump_ext}")
+  end
+
+  def launcher
+    @launcher ||= ERB.new(File.read(template)).result(binding)
+  end
+
+  def library_paths
+    @library_paths ||= Dir[
+      "#{lib_dir}/gcc/*",
+      "#{lib_dir}/gcc/*/gcc/*apple-darwin*/*"
+    ].map { |p| p.delete_prefix("#{lib_dir}/") }.sort_by { |p| [p.size, p] }
   end
 end
 
