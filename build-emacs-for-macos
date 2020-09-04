@@ -216,6 +216,13 @@ class Build
         'gcc brew formula has been installed via ./install-patched-gcc'
   end
 
+  def gcc_library_paths
+    @gcc_library_paths ||= Dir[
+      "#{gcc_dir}/lib/gcc/*",
+      "#{gcc_dir}/lib/gcc/*/gcc/*apple-darwin*/*"
+    ].sort_by { |p| [p.size, p] }
+  end
+
   def autogen
     FileUtils.cd(source_dir) do
       if File.exist?('autogen/copy_autogen')
@@ -256,14 +263,14 @@ class Build
         ].compact.join(' ')
 
         ENV['LDFLAGS'] = [
-          "-L#{gcc_dir}/lib/gcc/10",
+          gcc_library_paths.map { |path| "-L#{path}" },
           "-I#{gcc_dir}/include"
-        ].compact.join(' ')
+        ].flatten.compact.join(' ')
 
         ENV['LIBRARY_PATH'] = [
-          "#{gcc_dir}/lib/gcc/10",
+          gcc_library_paths,
           ENV['LIBRARY_PATH']
-        ].compact.join(':')
+        ].flatten.compact.join(':')
       end
 
       ENV['CC'] = 'clang'
