@@ -96,11 +96,15 @@ class Build
     autogen
     detect_native_comp if options[:native_comp].nil?
 
+    if options[:native_comp] && options[:launcher].nil?
+      options[:launcher] = true
+    end
+
     app = compile_source(@source_dir)
 
     LibEmbedder.new(app, brew_dir, extra_libs).embed
     LibGccJitEmbedder.new(app, gcc_dir).embed if options[:native_comp]
-    LauncherEmbedder.new(app, LAUNCHER_TEMPLATE).embed
+    LauncherEmbedder.new(app, LAUNCHER_TEMPLATE).embed if options[:launcher]
 
     archive_app(app)
   end
@@ -795,6 +799,12 @@ if __FILE__ == $PROGRAM_NAME
             'Enable/disable fix based on feature/native-comp-macos-fixes ' \
             'branch (default: enabled if native-comp supported)') do |v|
       cli_options[:macos_fixes] = v
+    end
+
+    opts.on('--[no-]launcher',
+            'Enable/disable embedded launcher script  ' \
+            '(default: enabled if native-comp is enabled)') do |v|
+      cli_options[:launcher] = v
     end
   end.parse!
 
