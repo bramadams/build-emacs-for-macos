@@ -54,7 +54,9 @@ LIB_PATHS=(
   '<%= library_paths.map { |p| p.gsub('\'', "\"'\"") }.join("'\n  '") %>'
 )
 for lib in "${LIB_PATHS[@]}"; do
-  libs="$(join : "$libs" "${DIR}/<%= lib_dir_name %>/${lib}")"
+  if [ -d "${DIR}/<%= lib_dir_name %>/${lib}" ]; then
+    libs="$(join : "$libs" "${DIR}/<%= lib_dir_name %>/${lib}")"
+  fi
 done
 
 LIBRARY_PATH="$(join : "$libs" "$LIBRARY_PATH")"
