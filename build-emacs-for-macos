@@ -175,11 +175,11 @@ class Build
   end
 
   def supports_native_comp?
-    @supports_native_comp ||= configure_help.match?(/\s+--with-nativecomp\s+/)
+    @supports_native_comp ||= !!configure_help.match(/\s+--with-nativecomp\s+/)
   end
 
   def supports_xwidgets?
-    @supports_xwidgets ||= configure_help.match?(/\s+--with-xwidgets\s+/)
+    @supports_xwidgets ||= !!configure_help.match(/\s+--with-xwidgets\s+/)
   end
 
   def detect_native_comp
@@ -543,7 +543,7 @@ class LibEmbedder < AbstractEmbedder
   def copy_libs(exe, rel_path = nil)
     exe_file = File.basename(exe)
     rel_path ||= Pathname.new(lib_dir).relative_path_from(
-      File.dirname(exe)
+      Pathname.new(File.dirname(exe))
     ).to_s
 
     `otool -L "#{exe}"`.split("\n")[1..-1].each do |line|
@@ -570,7 +570,7 @@ class LibEmbedder < AbstractEmbedder
 
   def copy_extra_libs(extra_libs, exe, rel_path = nil)
     rel_path ||= Pathname.new(lib_dir).relative_path_from(
-      File.dirname(exe)
+      Pathname.new(File.dirname(exe))
     ).to_s
 
     extra_libs.each do |lib|
@@ -591,7 +591,9 @@ class LibEmbedder < AbstractEmbedder
   end
 
   def self_ref_libs(exe)
-    rel_path = Pathname.new(lib_dir).relative_path_from(File.dirname(exe)).to_s
+    rel_path = Pathname.new(lib_dir).relative_path_from(
+      Pathname.new(File.dirname(exe))
+    ).to_s
     lib_paths ||= Dir.glob("#{lib_dir}/*").select { |f| File.file?(f) }
     libs = lib_paths.map { |f| File.basename(f) }
 
@@ -657,7 +659,7 @@ class LibGccJitEmbedder < AbstractEmbedder
   def gcc_version
     @gcc_version ||= Dir[File.join(gcc_dir, 'lib', 'gcc', '*', 'libgccjit.so*')]
                      .map { |path| File.dirname(path) }
-                     .select { |path| path.match?(%r{/\d+$}) }
+                     .select { |path| path.match(%r{/\d+$}) }
                      .uniq
                      .map { |dir| File.basename(dir).to_i }
                      .max
@@ -724,7 +726,9 @@ class LauncherEmbedder < AbstractEmbedder
     @library_paths ||= Dir[
       "#{lib_dir}/gcc/*",
       "#{lib_dir}/gcc/*/gcc/*apple-darwin*/*"
-    ].map { |p| p.delete_prefix("#{lib_dir}/") }.sort_by { |p| [p.size, p] }
+    ].map do |p|
+      p.gsub(/^#{Regexp.escape(lib_dir + '/')}/, '')
+    end.sort_by { |p| [p.size, p] }
   end
 end
 
